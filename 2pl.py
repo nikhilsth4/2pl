@@ -88,9 +88,7 @@ def write_item(
         if current_lock["lock_state"] == "read":
             if current_lock["holding_transaction"] == transaction_id:
                 current_lock["lock_state"] = "write"
-                print(
-                    f"Transaction {transaction_id} writes {item_id}."
-                )
+                print(f"Transaction {transaction_id} writes {item_id}.")
             else:
                 if current_lock["holding_transaction"] is not None:
                     if (
@@ -117,9 +115,7 @@ def write_item(
         else:
             if current_lock["holding_transaction"] == transaction_id:
                 current_lock["lock_state"] = "write"
-                print(
-                    f"Transaction {transaction_id} writes {item_id}."
-                )
+                print(f"Transaction {transaction_id} writes {item_id}.")
             else:
                 if current_lock["holding_transaction"] is not None:
                     if (
@@ -159,16 +155,22 @@ def end_transaction(transaction_id, transaction_table, lock_table):
         for item_id in current_transaction["locked_items"]:
             unlock_item(item_id, lock_table, transaction_table)
         print(f"Transaction {transaction_id} commits.")
-    else:
+    elif current_transaction["transaction_state"] == "aborted":
+        for item_id in current_transaction["locked_items"]:
+            unlock_item(item_id, lock_table, transaction_table)
         print(f"Transaction {transaction_id} cannot be committed.")
+    else:
+        print(f"Transaction {transaction_id} is in an unexpected state.")
 
 
 def unlock_item(item_id, lock_table, transaction_table):
-    current_lock = lock_table[item_id]
+    current_lock = lock_table.get(item_id)
     if current_lock:
-        current_lock["lock_state"] = "unlocked"
-        current_lock["holding_transaction"] = None
-        grant_lock(item_id, lock_table, transaction_table)
+        if current_lock["waiting_transactions"]:
+            grant_lock(item_id, lock_table, transaction_table)
+        else:
+            # If no transactions are waiting, remove the lock from the table.
+            del lock_table[item_id]
 
 
 def grant_lock(item_id, lock_table, transaction_table):
@@ -176,25 +178,15 @@ def grant_lock(item_id, lock_table, transaction_table):
     if current_lock and current_lock["waiting_transactions"]:
         waiting_transactions = list(current_lock["waiting_transactions"])
         waiting_transactions.sort(key=lambda t: transaction_table[t]["timestamp"])
-        for next_transaction in waiting_transactions:
-            next_transaction_entry = transaction_table[next_transaction]
-            if next_transaction_entry["transaction_state"] == "waiting":
-                if current_lock["lock_state"] == "read":
-                    read_item(
-                        next_transaction,
-                        item_id,
-                        transaction_table,
-                        lock_table,
-                        next_transaction_entry["timestamp"],
-                    )
-                else:
-                    write_item(
-                        next_transaction,
-                        item_id,
-                        transaction_table,
-                        lock_table,
-                        next_transaction_entry["timestamp"],
-                    )
+        next_transaction = waiting_transactions.pop(0)
+        current_lock["holding_transaction"] = next_transaction
+        next_transaction_entry = transaction_table[next_transaction]
+        if next_transaction_entry["transaction_state"] == "waiting":
+            next_transaction_entry["transaction_state"] = "active"
+            if current_lock["lock_state"] == "read":
+                print(f"Transaction {next_transaction} now reads {item_id}.")
+            else:
+                print(f"Transaction {next_transaction} now writes {item_id}.")
 
 
 def parse_operation(line):
@@ -232,5 +224,5 @@ def simulate_schedule(schedule_file):
 
 
 if __name__ == "__main__":
-    schedule_file = "input.txt"  # Replace with the path to your input file
+    schedule_file = "input2.txt"  # Replace with the path to your input file
     simulate_schedule(schedule_file)
