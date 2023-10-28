@@ -113,6 +113,29 @@ def write_item(
         print(f"T{transaction_id} writes {item_id} (write-locks it).")
 
 
+def end_transaction(transaction_id, transaction_table, lock_table):
+    current_transaction = transaction_table[transaction_id]
+    if current_transaction["transaction_state"] == "active":
+        for item_id in current_transaction["locked_items"]:
+            unlock_item(item_id, lock_table)
+        current_transaction["transaction_state"] = "committed"
+        current_transaction["locked_items"] = []
+        print(f"T{transaction_id} is committed and releases its locks.")
+    else:
+        print(f"T{transaction_id} cannot be committed.")
+
+
+def unlock_item(item_id, lock_table):
+    current_lock = lock_table[item_id]
+    if current_lock:
+        current_lock["lock_state"] = "unlocked"
+        current_lock["holding_transaction"] = None
+        if current_lock["waiting_transactions"]:
+            next_transaction = current_lock["waiting_transactions"].pop(0)
+            if next_transaction:
+                print(f"T{next_transaction} is granted the lock on {item_id}.")
+
+
 def parse_operation(line):
     match = re.match(r"([brwe])(\d+)\s*(\((\w+)\))?;", line)
     if match:
@@ -132,22 +155,22 @@ def simulate_schedule(schedule_file):
         for line in file:
             line = line.strip()
             op, tid, *rest = parse_operation(line)
-            print(op, tid, rest)
+            # print(op, tid, rest)
 
             if op == "b":
                 begin_transaction(tid, transaction_table, global_timestamp)
                 global_timestamp += 1
             elif op == "r":
                 item = rest[0]
-                print(tid, item, transaction_table, lock_table, global_timestamp)
+                # print(tid, item, transaction_table, lock_table, global_timestamp)
                 read_item(tid, item, transaction_table, lock_table, global_timestamp)
                 global_timestamp += 1
             elif op == "w":
                 item = rest[0]
                 write_item(tid, item, transaction_table, lock_table, global_timestamp)
                 global_timestamp += 1
-            # elif op == 'e':
-            #     end_transaction(tid, transaction_table, lock_table)
+            elif op == "e":
+                end_transaction(tid, transaction_table, lock_table)
 
 
 if __name__ == "__main__":
