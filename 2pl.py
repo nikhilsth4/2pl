@@ -6,7 +6,7 @@ def begin_transaction(transaction_id, transaction_table, global_timestamp):
     if transaction_id not in transaction_table:
         transaction = {
             "transaction_state": "active",
-            "locked_items": [],
+            "locked_items": set(),
             "timestamp": global_timestamp,
         }
         transaction_table[transaction_id] = transaction
@@ -23,35 +23,61 @@ def read_item(transaction_id, item_id, transaction_table, lock_table, global_tim
             if current_lock["holding_transaction"] == transaction_id:
                 print(f"T{transaction_id} reads {item_id}.")
             else:
-                if (
-                    current_transaction["timestamp"]
-                    < current_lock["holding_transaction"]["timestamp"]
-                ):
-                    current_transaction["transaction_state"] = "waiting"
-                    current_lock["waiting_transactions"].append(transaction_id)
-                    print(
-                        f"T{transaction_id} is younger and waits for T{current_lock['holding_transaction']} to release {item_id}."
-                    )
+                if current_lock["holding_transaction"] is not None:
+                    if (
+                        current_transaction["timestamp"]
+                        < transaction_table[current_lock["holding_transaction"]][
+                            "timestamp"
+                        ]
+                    ):
+                        current_transaction["transaction_state"] = "waiting"
+                        current_lock["waiting_transactions"].append(transaction_id)
+                        print(
+                            f"T{transaction_id} is younger and waits for T{current_lock['holding_transaction']} to release {item_id}."
+                        )
+                    else:
+                        current_transaction["transaction_state"] = "aborted"
+                        print(
+                            f"T{transaction_id} is older and aborted due to conflict with T{current_lock['holding_transaction']} on {item_id}."
+                        )
                 else:
                     current_transaction["transaction_state"] = "aborted"
                     print(
-                        f"T{transaction_id} is older and aborted due to conflict with T{current_lock['holding_transaction']} on {item_id}."
+                        f"T{transaction_id} is aborted due to conflict with no holding transaction on {item_id}."
                     )
         else:
             if current_lock["holding_transaction"] == transaction_id:
                 print(f"T{transaction_id} reads {item_id}.")
             else:
-                current_transaction["transaction_state"] = "aborted"
-                print(
-                    f"T{transaction_id} is younger and aborted due to conflict with T{current_lock['holding_transaction']} on {item_id}."
-                )
+                if current_lock["holding_transaction"] is not None:
+                    if (
+                        current_transaction["timestamp"]
+                        < transaction_table[current_lock["holding_transaction"]][
+                            "timestamp"
+                        ]
+                    ):
+                        current_transaction["transaction_state"] = "aborted"
+                        print(
+                            f"T{transaction_id} is younger and aborted due to conflict with T{current_lock['holding_transaction']} on {item_id}."
+                        )
+                    else:
+                        current_transaction["transaction_state"] = "waiting"
+                        current_lock["waiting_transactions"].append(transaction_id)
+                        print(
+                            f"T{transaction_id} is older and waits for T{current_lock['holding_transaction']} to release {item_id}."
+                        )
+                else:
+                    current_transaction["transaction_state"] = "aborted"
+                    print(
+                        f"T{transaction_id} is aborted due to conflict with no holding transaction on {item_id}."
+                    )
     else:
         lock_table[item_id] = {
             "lock_state": "read",
             "holding_transaction": transaction_id,
             "waiting_transactions": deque(),
         }
-        current_transaction["locked_items"].append(item_id)
+        current_transaction["locked_items"].add(item_id)
         print(f"T{transaction_id} reads {item_id} (read-locks it).")
 
 
@@ -68,19 +94,27 @@ def write_item(
                     f"T{transaction_id} upgrades {item_id} from read-lock to write-lock."
                 )
             else:
-                if (
-                    current_transaction["timestamp"]
-                    < current_lock["holding_transaction"]["timestamp"]
-                ):
-                    current_transaction["transaction_state"] = "waiting"
-                    current_lock["waiting_transactions"].append(transaction_id)
-                    print(
-                        f"T{transaction_id} is younger and waits for T{current_lock['holding_transaction']} to release {item_id}."
-                    )
+                if current_lock["holding_transaction"] is not None:
+                    if (
+                        current_transaction["timestamp"]
+                        < transaction_table[current_lock["holding_transaction"]][
+                            "timestamp"
+                        ]
+                    ):
+                        current_transaction["transaction_state"] = "waiting"
+                        current_lock["waiting_transactions"].append(transaction_id)
+                        print(
+                            f"T{transaction_id} is younger and waits for T{current_lock['holding_transaction']} to release {item_id}."
+                        )
+                    else:
+                        current_transaction["transaction_state"] = "aborted"
+                        print(
+                            f"T{transaction_id} is older and aborted due to conflict with T{current_lock['holding_transaction']} on {item_id}."
+                        )
                 else:
                     current_transaction["transaction_state"] = "aborted"
                     print(
-                        f"T{transaction_id} is older and aborted due to conflict with T{current_lock['holding_transaction']} on {item_id}."
+                        f"T{transaction_id} is aborted due to conflict with no holding transaction on {item_id}."
                     )
         else:
             if current_lock["holding_transaction"] == transaction_id:
@@ -89,17 +123,35 @@ def write_item(
                     f"T{transaction_id} upgrades {item_id} from read-lock to write-lock."
                 )
             else:
-                current_transaction["transaction_state"] = "aborted"
-                print(
-                    f"T{transaction_id} is younger and aborted due to conflict with T{current_lock['holding_transaction']} on {item_id}."
-                )
+                if current_lock["holding_transaction"] is not None:
+                    if (
+                        current_transaction["timestamp"]
+                        < transaction_table[current_lock["holding_transaction"]][
+                            "timestamp"
+                        ]
+                    ):
+                        current_transaction["transaction_state"] = "waiting"
+                        current_lock["waiting_transactions"].append(transaction_id)
+                        print(
+                            f"T{transaction_id} is younger and waits for T{current_lock['holding_transaction']} to release {item_id}."
+                        )
+                    else:
+                        current_transaction["transaction_state"] = "aborted"
+                        print(
+                            f"T{transaction_id} is older and aborted due to conflict with T{current_lock['holding_transaction']} on {item_id}."
+                        )
+                else:
+                    current_transaction["transaction_state"] = "aborted"
+                    print(
+                        f"T{transaction_id} is aborted due to conflict with no holding transaction on {item_id}."
+                    )
     else:
         lock_table[item_id] = {
             "lock_state": "write",
             "holding_transaction": transaction_id,
             "waiting_transactions": deque(),
         }
-        current_transaction["locked_items"].append(item_id)
+        current_transaction["locked_items"].add(item_id)
         print(f"T{transaction_id} writes {item_id} (write-locks it).")
 
 
@@ -107,9 +159,9 @@ def end_transaction(transaction_id, transaction_table, lock_table):
     current_transaction = transaction_table[transaction_id]
     if current_transaction["transaction_state"] == "active":
         for item_id in current_transaction["locked_items"]:
-            unlock_item(item_id, lock_table,transaction_table)
+            unlock_item(item_id, lock_table, transaction_table)
         current_transaction["transaction_state"] = "committed"
-        current_transaction["locked_items"] = []
+        current_transaction["locked_items"].clear()
         print(f"T{transaction_id} is committed and releases its locks.")
     else:
         print(f"T{transaction_id} cannot be committed.")
@@ -120,8 +172,8 @@ def unlock_item(item_id, lock_table, transaction_table):
     if current_lock:
         current_lock["lock_state"] = "unlocked"
         current_lock["holding_transaction"] = None
-        if current_lock["waiting_transactions"]:
-            grant_lock(item_id, lock_table, transaction_table)
+        grant_lock(item_id, lock_table, transaction_table)
+
 
 def grant_lock(item_id, lock_table, transaction_table):
     current_lock = lock_table[item_id]
@@ -132,10 +184,21 @@ def grant_lock(item_id, lock_table, transaction_table):
             if next_transaction_entry:
                 if next_transaction_entry["transaction_state"] == "waiting":
                     if current_lock["lock_state"] == "read":
-                        read_item(next_transaction, item_id, transaction_table, lock_table, next_transaction_entry["timestamp"])
+                        read_item(
+                            next_transaction,
+                            item_id,
+                            transaction_table,
+                            lock_table,
+                            next_transaction_entry["timestamp"],
+                        )
                     else:
-                        write_item(next_transaction, item_id, transaction_table, lock_table, next_transaction_entry["timestamp"])
-
+                        write_item(
+                            next_transaction,
+                            item_id,
+                            transaction_table,
+                            lock_table,
+                            next_transaction_entry["timestamp"],
+                        )
 
 
 def parse_operation(line):
@@ -157,14 +220,12 @@ def simulate_schedule(schedule_file):
         for line in file:
             line = line.strip()
             op, tid, *rest = parse_operation(line)
-            # print(op, tid, rest)
 
             if op == "b":
                 begin_transaction(tid, transaction_table, global_timestamp)
                 global_timestamp += 1
             elif op == "r":
                 item = rest[0]
-                # print(tid, item, transaction_table, lock_table, global_timestamp)
                 read_item(tid, item, transaction_table, lock_table, global_timestamp)
                 global_timestamp += 1
             elif op == "w":
