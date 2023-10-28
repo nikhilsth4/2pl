@@ -1,96 +1,121 @@
-def simulate_schedule(input_file):
-    transactions = {}
-    locks = {}
-    with open(input_file, 'r') as f:
-        for line in f:
-            line = line.strip()
-            operation, *args = line.split()
-            transaction_id = int(args[0][1])
-            if operation == 'b':
-                begin_transaction(transaction_id, transactions)
-            elif operation == 'r':
-                item_id = args[0][1]
-                read_item(transaction_id, item_id, transactions, locks)
-            elif operation == 'w':
-                item_id = args[0][1]
-                write_item(transaction_id, item_id, transactions, locks)
-            elif operation == 'e':
-                end_transaction(transaction_id, transactions, locks)
+import re
+from collections import deque
 
-def begin_transaction(transaction_id, transactions):
-    transaction = {"transaction_state": "active", "locked_items": [], "timestamp": transaction_id}
-    transactions[transaction_id] = transaction
-    print(f"Begin transaction T{transaction_id}")
 
-def read_item(transaction_id, item_id, transactions, locks):
-    transaction = transactions[transaction_id]
-    if item_id in locks:
-        lock = locks[item_id]
-        if lock["lock_state"] == "write":
-            if lock["holding_transaction"] == transaction_id:
-                lock["lock_state"] = "read"
-                print(f"Read item {item_id} by T{transaction_id}")
+def begin_transaction(transaction_id, transaction_table, global_timestamp):
+    if transaction_id not in transaction_table:
+        transaction = {
+            "transaction_state": "active",
+            "locked_items": set(),
+            "timestamp": global_timestamp,
+        }
+        transaction_table[transaction_id] = transaction
+        print(f"Transaction {transaction_id} begins at TS({global_timestamp}).")
+
+
+def read_item(transaction_id, item_id, transaction_table, lock_table, global_timestamp):
+    current_transaction = transaction_table[transaction_id]
+    if item_id in lock_table:
+        current_lock = lock_table[item_id]
+        if current_lock["lock_state"] == "read":
+            if current_lock["holding_transaction"] == transaction_id:
+                print(f"Transaction {transaction_id} reads {item_id}.")
             else:
-                block_transaction(transaction_id, lock, transactions)
-        elif lock["lock_state"] == "read":
-            lock["holding_transaction"].append(transaction_id)
-            print(f"Read item {item_id} by T{transaction_id}")
-    else:
-        lock = {"item_id": item_id, "lock_state": "read", "holding_transaction": [transaction_id], "waiting_transactions": []}
-        locks[item_id] = lock
-        print(f"Read item {item_id} by T{transaction_id}")
-
-def write_item(transaction_id, item_id, transactions, locks):
-    transaction = transactions[transaction_id]
-    if item_id in locks:
-        lock = locks[item_id]
-        if lock["lock_state"] == "read":
-            if len(lock["holding_transaction"]) == 1 and lock["holding_transaction"][0] == transaction_id:
-                lock["lock_state"] = "write"
-                print(f"Write item {item_id} by T{transaction_id}")
-            else:
-                block_transaction(transaction_id, lock, transactions)
-        elif lock["lock_state"] == "write":
-            if lock["holding_transaction"] == transaction_id:
-                pass
-            else:
-                block_transaction(transaction_id, lock, transactions)
-    else:
-        lock = {"item_id": item_id, "lock_state": "write", "holding_transaction": transaction_id, "waiting_transactions": []}
-        locks[item_id] = lock
-        print(f"Write item {item_id} by T{transaction_id}")
-
-def block_transaction(transaction_id, lock, transactions):
-    waiting_transactions = lock["waiting_transactions"]
-    if waiting_transactions:
-        max_waiting_transaction = max(waiting_transactions)
-        if transaction_id < max_waiting_transaction:
-            abort_transaction(transaction_id, transactions)
+                current_transaction["transaction_state"] = "waiting"
+                current_lock["waiting_transactions"].append(transaction_id)
+                print(
+                    f"Transaction {transaction_id} waits for Transaction {current_lock['holding_transaction']} to release {item_id}."
+                )
         else:
-            waiting_transactions.append(transaction_id)
+            current_transaction["transaction_state"] = "waiting"
+            current_lock["waiting_transactions"].append(transaction_id)
+            print(
+                f"Transaction {transaction_id} waits for Transaction {current_lock['holding_transaction']} to release {item_id}."
+            )
     else:
-        waiting_transactions.append(transaction_id)
+        lock_table[item_id] = {
+            "lock_state": "read",
+            "holding_transaction": transaction_id,
+            "waiting_transactions": deque(),
+        }
+        current_transaction["locked_items"].add(item_id)
+        print(f"Transaction {transaction_id} reads {item_id}.")
 
-def end_transaction(transaction_id, transactions, locks):
-    transaction = transactions[transaction_id]
-    if transaction["transaction_state"] == "blocked":
-        pass
-    elif transaction["transaction_state"] == "aborted":
-        release_locks(transaction_id, locks)
-        del transactions[transaction_id]
+
+def write_item(
+    transaction_id, item_id, transaction_table, lock_table, global_timestamp
+):
+    current_transaction = transaction_table[transaction_id]
+    if item_id in lock_table:
+        current_lock = lock_table[item_id]
+        if (
+            current_lock["lock_state"] == "read"
+            and current_lock["holding_transaction"] != transaction_id
+        ):
+            current_transaction["transaction_state"] = "waiting"
+            current_lock["waiting_transactions"].append(transaction_id)
+            print(
+                f"Transaction {transaction_id} waits for Transaction {current_lock['holding_transaction']} to release {item_id}."
+            )
+        else:
+            current_lock["lock_state"] = "write"
+            print(f"Transaction {transaction_id} writes {item_id}.")
     else:
-        release_locks(transaction_id, locks)
-        del transactions[transaction_id]
-        print(f"End transaction T{transaction_id}")
+        lock_table[item_id] = {
+            "lock_state": "write",
+            "holding_transaction": transaction_id,
+            "waiting_transactions": deque(),
+        }
+        current_transaction["locked_items"].add(item_id)
+        print(f"Transaction {transaction_id} writes {item_id}.")
 
-def release_locks(transaction_id, locks):
-    for lock in locks.values():
-        if lock["lock_state"] == "read" and transaction_id in lock["holding_transaction"]:
-            lock["holding_transaction"].remove(transaction_id)
-        elif lock["lock_state"] == "write" and lock["holding_transaction"] == transaction_id:
-            lock["lock_state"] = None
-            lock["holding_transaction"] = None
-            lock["waiting_transactions"] = []
 
-# Example usage
-simulate_schedule("input.doc")
+def end_transaction(transaction_id, transaction_table, lock_table):
+    current_transaction = transaction_table[transaction_id]
+    for item_id in current_transaction["locked_items"]:
+        unlock_item(item_id, lock_table)
+    print(f"Transaction {transaction_id} commits.")
+
+
+def unlock_item(item_id, lock_table):
+    if item_id in lock_table:
+        del lock_table[item_id]
+
+
+def parse_operation(line):
+    match = re.match(r"([brwe])(\d+)\s*(\((\w+)\))?;", line)
+    if match:
+        op = match.group(1)
+        tid = int(match.group(2))
+        item = match.group(4)
+        return op, tid, item
+    return None
+
+
+def simulate_schedule(schedule_file):
+    transaction_table = {}
+    lock_table = {}
+    global_timestamp = 1
+
+    with open(schedule_file, "r") as file:
+        for line in file:
+            line = line.strip()
+            op, tid, *rest = parse_operation(line)
+
+            if op == "b":
+                begin_transaction(tid, transaction_table, global_timestamp)
+            elif op == "r":
+                item = rest[0]
+                read_item(tid, item, transaction_table, lock_table, global_timestamp)
+            elif op == "w":
+                item = rest[0]
+                write_item(tid, item, transaction_table, lock_table, global_timestamp)
+            elif op == "e":
+                end_transaction(tid, transaction_table, lock_table)
+
+            global_timestamp += 1
+
+
+if __name__ == "__main__":
+    schedule_file = "input1.txt"  # Replace with the path to your input file
+    simulate_schedule(schedule_file)
