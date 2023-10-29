@@ -22,7 +22,9 @@ def read_item(transaction_id, item_id, transaction_table, lock_table, aborted_se
             if current_transaction["timestamp"] > holding_transaction["timestamp"]:
                 # Abort the younger transaction.
                 current_transaction["transaction_state"] = "aborted"
-                unlock_item(item_id, lock_table)
+                # unlock_item(item_id, lock_table)
+                for item_id in current_transaction["locked_items"]:
+                    unlock_item(item_id, lock_table)
                 if len(current_lock["waiting_transactions"]) != 0:
 
                     # Wake up any transactions that were waiting for the aborted transaction to release locks.
@@ -63,7 +65,10 @@ def write_item(transaction_id, item_id, transaction_table, lock_table, aborted_s
         ):
             # Abort the younger transaction.
             current_transaction["transaction_state"] = "aborted"
-            unlock_item(item_id, lock_table)
+            for item_id in current_transaction["locked_items"]:
+                unlock_item(item_id, lock_table)
+
+            
             # Wake up any transactions that were waiting for the aborted transaction to release locks.
             for waiting_transaction_id in current_lock["waiting_transactions"]:
                 waiting_transaction = transaction_table[waiting_transaction_id]
@@ -93,6 +98,7 @@ def end_transaction(transaction_id, transaction_table, lock_table):
     for item_id in current_transaction["locked_items"]:
         unlock_item(item_id, lock_table)
     print(f"Transaction {transaction_id} commits.")
+    print_lock_table(lock_table)
 
 
 def unlock_item(item_id, lock_table):
@@ -158,5 +164,5 @@ def simulate_schedule(schedule_file):
 
 
 if __name__ == "__main__":
-    schedule_file = "input2.txt"  # Replace with the path to your input file
+    schedule_file = "input3.txt"  # Replace with the path to your input file
     simulate_schedule(schedule_file)
