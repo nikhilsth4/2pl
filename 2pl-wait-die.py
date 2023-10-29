@@ -15,6 +15,7 @@ def begin_transaction(transaction_id, transaction_table, global_timestamp):
 
 def read_item(transaction_id, item_id, transaction_table, lock_table, aborted_set):
     current_transaction = transaction_table[transaction_id]
+    # print(item_id)
     if item_id in lock_table:
         current_lock = lock_table[item_id]
         if current_lock["holding_transaction"] != transaction_id:
@@ -23,6 +24,7 @@ def read_item(transaction_id, item_id, transaction_table, lock_table, aborted_se
                 # Abort the younger transaction.
                 current_transaction["transaction_state"] = "aborted"
                 # unlock_item(item_id, lock_table)
+                print(f"Transaction {transaction_id} is aborted as cannot do read lock on {item_id} it is held by {current_lock["holding_transaction"]}")
                 for item_id in current_transaction["locked_items"]:
                     unlock_item(item_id, lock_table)
                 if len(current_lock["waiting_transactions"]) != 0:
@@ -33,7 +35,7 @@ def read_item(transaction_id, item_id, transaction_table, lock_table, aborted_se
                         waiting_transaction["transaction_state"] = "active"
                 aborted_set.add(transaction_id)
 
-                print(f"Transaction {transaction_id} is aborted as cannot do read lock on {item_id} it is held by {current_lock["holding_transaction"]}")
+                
                 return
             else:
                 current_transaction["transaction_state"] = "waiting"
@@ -134,8 +136,8 @@ def simulate_schedule(schedule_file):
             line = line.strip()
             op, tid, *rest = parse_operation(line)
             global_timestamp += 1
-            if tid not in aborted_set:
-                print_lock_table(lock_table)
+            # if tid not in aborted_set:
+            #     print_lock_table(lock_table)
 
             if tid in aborted_set:
                 continue
@@ -164,5 +166,5 @@ def simulate_schedule(schedule_file):
 
 
 if __name__ == "__main__":
-    schedule_file = "input3.txt"  # Replace with the path to your input file
+    schedule_file = "input5.txt"  # Replace with the path to your input file
     simulate_schedule(schedule_file)
