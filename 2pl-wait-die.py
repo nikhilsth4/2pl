@@ -60,10 +60,12 @@ def write_item(transaction_id, item_id, transaction_table, lock_table, aborted_s
     current_transaction = transaction_table[transaction_id]
     if item_id in lock_table:
         current_lock = lock_table[item_id]
+        holding_transaction = transaction_table[current_lock["holding_transaction"]]
+
         if (
             current_lock["holding_transaction"] != transaction_id
             and current_transaction["timestamp"]
-            > current_lock["holding_transaction"]["timestamp"]
+            > holding_transaction["timestamp"]
         ):
             # Abort the younger transaction.
             current_transaction["transaction_state"] = "aborted"
@@ -100,7 +102,7 @@ def end_transaction(transaction_id, transaction_table, lock_table):
     for item_id in current_transaction["locked_items"]:
         unlock_item(item_id, lock_table)
     print(f"Transaction {transaction_id} commits.")
-    print_lock_table(lock_table)
+    # print_lock_table(lock_table)
 
 
 def unlock_item(item_id, lock_table):
