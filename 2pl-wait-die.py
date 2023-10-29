@@ -13,9 +13,20 @@ def begin_transaction(transaction_id, transaction_table, global_timestamp):
         print(f"Transaction {transaction_id} begins at TS({global_timestamp}).")
 
 
-def read_item(transaction_id, item_id, transaction_table, lock_table, aborted_set):
+def read_item(
+    transaction_id,
+    item_id,
+    transaction_table,
+    lock_table,
+    aborted_set,
+):
     current_transaction = transaction_table[transaction_id]
-    # print(item_id)
+    # print(transaction_id, current_transaction["transaction_state"])
+
+    if current_transaction["transaction_state"] == "waiting":
+        print(f"Transaction {transaction_id} is waiting and cannot read {item_id}.")
+        return
+
     if item_id in lock_table:
         current_lock = lock_table[item_id]
         if current_lock["holding_transaction"] != transaction_id:
@@ -23,19 +34,16 @@ def read_item(transaction_id, item_id, transaction_table, lock_table, aborted_se
             if current_transaction["timestamp"] > holding_transaction["timestamp"]:
                 # Abort the younger transaction.
                 current_transaction["transaction_state"] = "aborted"
-                # unlock_item(item_id, lock_table)
-                print(f"Transaction {transaction_id} is aborted as cannot do read lock on {item_id} it is held by {current_lock["holding_transaction"]}")
+                print(
+                    f"Transaction {transaction_id} is aborted as it cannot read {item_id} held by {current_lock['holding_transaction']}"
+                )
                 for item_id in current_transaction["locked_items"]:
                     unlock_item(item_id, lock_table)
                 if len(current_lock["waiting_transactions"]) != 0:
-
-                    # Wake up any transactions that were waiting for the aborted transaction to release locks.
                     for waiting_transaction_id in current_lock["waiting_transactions"]:
                         waiting_transaction = transaction_table[waiting_transaction_id]
                         waiting_transaction["transaction_state"] = "active"
                 aborted_set.add(transaction_id)
-
-                
                 return
             else:
                 current_transaction["transaction_state"] = "waiting"
@@ -43,6 +51,7 @@ def read_item(transaction_id, item_id, transaction_table, lock_table, aborted_se
                 print(
                     f"Transaction {transaction_id} waits for Transaction {current_lock['holding_transaction']} to release {item_id}."
                 )
+                # waiting_transactions[transaction_id] = "waiting"
                 return
         else:
             print(f"Transaction {transaction_id} reads {item_id}.")
@@ -56,30 +65,38 @@ def read_item(transaction_id, item_id, transaction_table, lock_table, aborted_se
         print(f"Transaction {transaction_id} reads {item_id}.")
 
 
-def write_item(transaction_id, item_id, transaction_table, lock_table, aborted_set):
+def write_item(
+    transaction_id,
+    item_id,
+    transaction_table,
+    lock_table,
+    aborted_set,
+):
     current_transaction = transaction_table[transaction_id]
+    # print(transaction_id, current_transaction["transaction_state"])
+    if current_transaction["transaction_state"] == "waiting":
+        print(f"Transaction {transaction_id} is waiting and cannot write {item_id}.")
+        return
     if item_id in lock_table:
         current_lock = lock_table[item_id]
         holding_transaction = transaction_table[current_lock["holding_transaction"]]
-
         if (
             current_lock["holding_transaction"] != transaction_id
-            and current_transaction["timestamp"]
-            > holding_transaction["timestamp"]
+            and current_transaction["timestamp"] > holding_transaction["timestamp"]
         ):
             # Abort the younger transaction.
             current_transaction["transaction_state"] = "aborted"
+            print(
+                f"Transaction {transaction_id} is aborted as it cannot write {item_id} held by {current_lock['holding_transaction']}"
+            )
             for item_id in current_transaction["locked_items"]:
                 unlock_item(item_id, lock_table)
 
-            
             # Wake up any transactions that were waiting for the aborted transaction to release locks.
             for waiting_transaction_id in current_lock["waiting_transactions"]:
                 waiting_transaction = transaction_table[waiting_transaction_id]
                 waiting_transaction["transaction_state"] = "active"
             aborted_set.add(transaction_id)
-
-            print(f"Transaction {transaction_id} is aborted")
             return
         else:
             current_lock["lock_state"] = "write"
@@ -96,8 +113,10 @@ def write_item(transaction_id, item_id, transaction_table, lock_table, aborted_s
 
 def end_transaction(transaction_id, transaction_table, lock_table):
     current_transaction = transaction_table[transaction_id]
-    # Check if the transaction is aborted.
-    if current_transaction["transaction_state"] == "aborted":
+    if (
+        current_transaction["transaction_state"] == "aborted"
+        or current_transaction["transaction_state"] == "waiting"
+    ):
         return
     for item_id in current_transaction["locked_items"]:
         unlock_item(item_id, lock_table)
@@ -119,27 +138,29 @@ def parse_operation(line):
         return op, tid, item
     return None
 
-def print_lock_table(lock_table):
-  """Prints the current state of the lock table."""
 
-  print("Lock table:")
-  for item_id in lock_table:
-    print(f"{item_id}: {lock_table[item_id]}")
+def print_lock_table(lock_table):
+    print("Lock table:")
+    for item_id in lock_table:
+        print(f"{item_id}: {lock_table[item_id]}")
 
 
 def simulate_schedule(schedule_file):
     transaction_table = {}
     lock_table = {}
-    global_timestamp = 1
+    global_timestamp = 0
     aborted_set = set()
+    waiting_transactions = {}
+
+    # List to track waiting transactions that need to be reprocessed
+    waiting_list = []
 
     with open(schedule_file, "r") as file:
         for line in file:
+            print(lock_table)
             line = line.strip()
             op, tid, *rest = parse_operation(line)
             global_timestamp += 1
-            # if tid not in aborted_set:
-            #     print_lock_table(lock_table)
 
             if tid in aborted_set:
                 continue
@@ -168,5 +189,5 @@ def simulate_schedule(schedule_file):
 
 
 if __name__ == "__main__":
-    schedule_file = "input5.txt"  # Replace with the path to your input file
+    schedule_file = "input4.txt"  # Replace with the path to your input file
     simulate_schedule(schedule_file)
