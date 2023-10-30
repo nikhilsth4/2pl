@@ -1,7 +1,7 @@
 import re
 from collections import deque
 
-# waiting_transactions={3:[r,w,e]}
+
 transaction_table = {}
 lock_table = {}
 aborted_set = set()
@@ -143,6 +143,8 @@ def end_transaction(
 
     for item_id in current_transaction["locked_items"]:
         unlock_item(item_id, lock_table)
+
+    current_transaction["transaction_state"] = "committed"
     print(f"Transaction {transaction_id} commits.")
 
     if len(waiting_transactions) > 0:
@@ -185,6 +187,13 @@ def print_lock_table(lock_table):
         print(f"{item_id}: {lock_table[item_id]}")
 
 
+def print_transaction_table(transaction_table):
+    print("Transaction table:")
+    # print(transaction_table)
+    for item_id in transaction_table:
+        print(f"{item_id}: {transaction_table[item_id]}")
+
+
 def simulate_schedule(schedule_file):
     global_timestamp = 0
     waiting_transaction_running = False
@@ -202,6 +211,10 @@ def simulate_schedule(schedule_file):
                 begin_transaction(tid, transaction_table, global_timestamp)
             else:
                 sim_ops(op, tid, rest[0], waiting_transaction_running)
+
+            if tid not in aborted_set:
+                print_lock_table(lock_table)
+                print_transaction_table(transaction_table)
             # print(waiting_transactions)
 
 
@@ -229,5 +242,5 @@ def sim_ops(op, tid, item_id, waiting_transaction_running):
 
 
 if __name__ == "__main__":
-    schedule_file = "input2.txt"  # Replace with the path to your input file
+    schedule_file = "input1.txt"  # Replace with the path to your input file
     simulate_schedule(schedule_file)
