@@ -1,13 +1,23 @@
 import re
 from collections import deque
 
+# Initialize data structures to manage transactions and locks.
 
+# transaction_table = {1:{“transaction_state”: "active", “locked_items”:["X"], “timestamp” : 2}
 transaction_table = {}
+
+# lock_table = {“Y”:{“lock_state”: “read”, “holding_transaction”: 1 , “waiting_transactions”:deque[2,3]},
 lock_table = {}
+
 aborted_set = set()
+
+# waiting_transactions : { 1:{“read”, “write”, “end”}}
 waiting_transactions = {}
 
 
+# Initializes a new transaction with a given ID and timestamp.
+# Sets the transaction's state to "active."
+# Prints a message indicating the transaction has begun.
 def begin_transaction(transaction_id, transaction_table, global_timestamp):
     if transaction_id not in transaction_table:
         transaction = {
@@ -19,6 +29,9 @@ def begin_transaction(transaction_id, transaction_table, global_timestamp):
         print(f"Transaction {transaction_id} begins at TS({global_timestamp}).")
 
 
+# Handles a read operation for a specific transaction and item.
+# Checks the transaction's state and the item's lock status to determine the action.
+# May lead to waiting, aborting, or performing the read operation
 def read_item(
     transaction_id,
     item_id,
@@ -31,7 +44,6 @@ def read_item(
 
     if current_transaction["transaction_state"] == "waiting":
         waiting_transactions[transaction_id].append("r")
-
         print(f"Transaction {transaction_id} is waiting and cannot read {item_id}.")
         return
 
@@ -39,6 +51,7 @@ def read_item(
         current_lock = lock_table[item_id]
         if current_lock["holding_transaction"] != transaction_id:
             holding_transaction = transaction_table[current_lock["holding_transaction"]]
+            # Check Wait-die for read
             if current_transaction["timestamp"] > holding_transaction["timestamp"]:
                 # Abort the younger transaction.
                 current_transaction["transaction_state"] = "aborted"
@@ -54,6 +67,7 @@ def read_item(
                 aborted_set.add(transaction_id)
                 return
             else:
+                # wait for the younger transaction
                 current_transaction["transaction_state"] = "waiting"
                 current_lock["waiting_transactions"].append(transaction_id)
                 print(
@@ -62,9 +76,11 @@ def read_item(
                 waiting_transactions[transaction_id] = deque(["r"])
                 # waiting_transactions[transaction_id] = "waiting"
                 return
+        # read transaction
         else:
             print(f"Transaction {transaction_id} reads {item_id}.")
     else:
+        # Create a new  read lock
         lock_table[item_id] = {
             "lock_state": "read",
             "holding_transaction": transaction_id,
@@ -74,6 +90,9 @@ def read_item(
         print(f"Transaction {transaction_id} reads {item_id}.")
 
 
+# Handles a write operation for a specific transaction and item.
+# Checks the transaction's state and the item's lock status to determine the action.
+# May lead to waiting, aborting, or performing the write operation.
 def write_item(
     transaction_id,
     item_id,
@@ -91,6 +110,8 @@ def write_item(
     if item_id in lock_table:
         current_lock = lock_table[item_id]
         holding_transaction = transaction_table[current_lock["holding_transaction"]]
+
+        # Check Wait-die for write
         if (
             current_lock["holding_transaction"] != transaction_id
             and current_transaction["timestamp"] > holding_transaction["timestamp"]
@@ -110,10 +131,6 @@ def write_item(
             aborted_set.add(transaction_id)
             return
         else:
-            # if transaction_id in waiting_transactions:
-            #     waiting_transactions[transaction_id].append("w")
-            # else:
-            #     waiting_transactions[transaction_id] = deque(["w"])
             current_lock["lock_state"] = "write"
             print(f"Transaction {transaction_id} writes {item_id}.")
     else:
@@ -126,6 +143,8 @@ def write_item(
         print(f"Transaction {transaction_id} writes {item_id}.")
 
 
+# Ends a transaction, releasing all its locks.
+# Handles potential waiting transactions and wakes them up.
 def end_transaction(
     transaction_id, transaction_table, lock_table, waiting_transaction_running
 ):
@@ -159,6 +178,8 @@ def end_transaction(
     return
 
 
+# Unlocks a data item and removes it from the lock table.
+# If there are waiting transactions, it assigns the lock to the next waiting transaction.
 def unlock_item(item_id, lock_table):
     if item_id in lock_table and len(lock_table[item_id]["waiting_transactions"]) == 0:
         del lock_table[item_id]
@@ -171,6 +192,7 @@ def unlock_item(item_id, lock_table):
             transaction_table[waiting_item]["transaction_state"] = "active"
 
 
+# Parses a line from the input file to extract the operation type, transaction ID, and item ID.
 def parse_operation(line):
     match = re.match(r"([brwe])(\d+)\s*(\((\w+)\))?;", line)
     if match:
@@ -181,10 +203,14 @@ def parse_operation(line):
     return None
 
 
+# Prints the current state of the lock table.
 def print_lock_table(lock_table):
     print("Lock table:")
     for item_id in lock_table:
         print(f"{item_id}: {lock_table[item_id]}")
+
+
+# Prints the current state of the transaction table.
 
 
 def print_transaction_table(transaction_table):
@@ -194,6 +220,8 @@ def print_transaction_table(transaction_table):
         print(f"{item_id}: {transaction_table[item_id]}")
 
 
+# Simulates the transaction schedule based on an input file.
+# Manages the global timestamp and waiting transactions.
 def simulate_schedule(schedule_file):
     global_timestamp = 0
     waiting_transaction_running = False
@@ -212,13 +240,15 @@ def simulate_schedule(schedule_file):
             else:
                 sim_ops(op, tid, rest[0], waiting_transaction_running)
 
-            # if tid not in aborted_set:
-            #     print_lock_table(lock_table)
-            #     print_transaction_table(transaction_table)
-            # print(waiting_transactions)
 
-
+# Executes a specific operation (read, write, end) for a transaction.
 def sim_ops(op, tid, item_id, waiting_transaction_running):
+    # Uncomment/comment the below code to check transaction table and lock table
+    if tid not in aborted_set:
+        print_lock_table(lock_table)
+        print_transaction_table(transaction_table)
+        # print(waiting_transactions)
+
     if op == "r":
         item = item_id
         read_item(
@@ -242,5 +272,5 @@ def sim_ops(op, tid, item_id, waiting_transaction_running):
 
 
 if __name__ == "__main__":
-    schedule_file = "input4.txt"  # Replace with the path to your input file
+    schedule_file = "input.txt"  # Replace with the path to the input file [input1,input2,input3,input4,input5.txt]
     simulate_schedule(schedule_file)
