@@ -48,6 +48,7 @@ def write_item(
     current_transaction = transaction_table[transaction_id]
     if item_id in lock_table:
         current_lock = lock_table[item_id]
+        
         if (
             current_lock["lock_state"] == "read"
             and current_lock["holding_transaction"] != transaction_id
