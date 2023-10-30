@@ -1,6 +1,11 @@
 import re
 from collections import deque
 
+# waiting_transactions={3:[r,w,e]}
+transaction_table = {}
+lock_table = {}
+aborted_set = set()
+
 
 def begin_transaction(transaction_id, transaction_table, global_timestamp):
     if transaction_id not in transaction_table:
@@ -146,14 +151,7 @@ def print_lock_table(lock_table):
 
 
 def simulate_schedule(schedule_file):
-    transaction_table = {}
-    lock_table = {}
     global_timestamp = 0
-    aborted_set = set()
-    waiting_transactions = {}
-
-    # List to track waiting transactions that need to be reprocessed
-    waiting_list = []
 
     with open(schedule_file, "r") as file:
         for line in file:
@@ -166,26 +164,31 @@ def simulate_schedule(schedule_file):
                 continue
             elif op == "b":
                 begin_transaction(tid, transaction_table, global_timestamp)
-            elif op == "r":
-                item = rest[0]
-                read_item(
-                    tid,
-                    item,
-                    transaction_table,
-                    lock_table,
-                    aborted_set,
-                )
-            elif op == "w":
-                item = rest[0]
-                write_item(
-                    tid,
-                    item,
-                    transaction_table,
-                    lock_table,
-                    aborted_set,
-                )
-            elif op == "e":
-                end_transaction(tid, transaction_table, lock_table)
+            else:
+                sim_ops(op, tid, rest[0])
+
+
+def sim_ops(op, tid, item_id):
+    if op == "r":
+        item = item_id
+        read_item(
+            tid,
+            item,
+            transaction_table,
+            lock_table,
+            aborted_set,
+        )
+    elif op == "w":
+        item = item_id
+        write_item(
+            tid,
+            item,
+            transaction_table,
+            lock_table,
+            aborted_set,
+        )
+    elif op == "e":
+        end_transaction(tid, transaction_table, lock_table)
 
 
 if __name__ == "__main__":
